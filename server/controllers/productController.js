@@ -7,7 +7,14 @@ const path = require('path');
 // @access  Public
 const getProducts = async (req, res) => {
     try {
-        const products = await Product.find({});
+        let query = {};
+
+        // Filter by stock status if requested
+        if (req.query.stockStatus === 'inStock') {
+            query.countInStock = { $gt: 0 };
+        }
+
+        const products = await Product.find(query);
         res.json(products);
     } catch (error) {
         res.status(500).json({ message: 'Server Error' });

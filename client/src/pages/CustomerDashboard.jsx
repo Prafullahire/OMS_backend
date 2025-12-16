@@ -14,7 +14,7 @@ const CustomerDashboard = () => {
 
     useEffect(() => {
         const fetchProducts = async () => {
-            const { data } = await API.get('/products');
+            const { data } = await API.get('/products?stockStatus=inStock');
             setProducts(data);
         };
         const fetchOrders = async () => {
