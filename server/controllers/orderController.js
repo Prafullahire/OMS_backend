@@ -1,4 +1,5 @@
 const Order = require('../models/Order');
+const Product = require('../models/Product');
 
 // @desc    Create new order
 // @route   POST /api/orders
@@ -10,6 +11,26 @@ const addOrderItems = async (req, res) => {
         res.status(400).json({ message: 'No order items' });
         return;
     } else {
+        // First pass: Validate stock
+        for (const item of orderItems) {
+            const product = await Product.findById(item.product);
+            if (!product) {
+                res.status(404).json({ message: `Product not found: ${item.name}` });
+                return;
+            }
+            if (product.countInStock < item.qty) {
+                res.status(400).json({ message: `Insufficient stock for ${product.name}. Available: ${product.countInStock}` });
+                return;
+            }
+        }
+
+        // Second pass: Reduce stock
+        for (const item of orderItems) {
+            const product = await Product.findById(item.product);
+            product.countInStock = product.countInStock - item.qty;
+            await product.save();
+        }
+
         const order = new Order({
             orderItems,
             user: req.user._id,
