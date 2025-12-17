@@ -1,4 +1,6 @@
 const User = require('../models/User');
+const Otp = require('../models/Otp');
+const sendSMS = require('../utils/sendSMS');
 const jwt = require('jsonwebtoken');
 
 const generateToken = (id, role, name, email, profileImage) => {
@@ -36,7 +38,15 @@ const registerUser = async (req, res) => {
         return;
     }
 
-    
+    if (phoneNumber) {
+        const phoneExists = await User.findOne({ phoneNumber });
+        if (phoneExists) {
+            res.status(400).json({ message: 'User with this phone number already exists' });
+            return;
+        }
+    }
+
+
     let finalRole = isFirstAccount ? 'admin' : (role || 'customer');
 
     const user = await User.create({
@@ -88,7 +98,7 @@ const googleLogin = async (req, res) => {
                 token: generateToken(user._id, user.role, user.name, user.email, user.profileImage),
             });
         } else {
-            
+
             const randomPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8);
 
             const isFirstAccount = (await User.countDocuments({})) === 0;
@@ -133,7 +143,7 @@ const forgotPassword = async (req, res) => {
 
         await user.save({ validateBeforeSave: false });
 
-        
+
         const resetUrl = `http://localhost:5173/reset-password/${resetToken}`;
 
         const message = `You are receiving this email because you (or someone else) has requested the reset of a password. Please make a PUT request to: \n\n ${resetUrl}`;
@@ -191,4 +201,70 @@ const resetPassword = async (req, res) => {
     });
 };
 
-module.exports = { loginUser, registerUser, googleLogin, forgotPassword, resetPassword };
+const sendOtp = async (req, res) => {
+    const { phoneNumber } = req.body;
+
+    if (!phoneNumber) {
+        return res.status(400).json({ message: 'Phone number is required' });
+    }
+
+    // Remove existing OTPs for this number
+    await Otp.deleteMany({ phoneNumber });
+
+    // Generate 6 digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    await Otp.create({
+        phoneNumber,
+        otp
+    });
+
+    try {
+        await sendSMS({
+            phoneNumber,
+            message: `Your OTP is ${otp}. It is valid for 3 minutes.`
+        });
+        res.status(200).json({ message: 'OTP sent successfully' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Failed to send OTP' });
+    }
+};
+
+const loginWithOtp = async (req, res) => {
+    const { phoneNumber, otp } = req.body;
+
+    if (!phoneNumber || !otp) {
+        return res.status(400).json({ message: 'Phone number and OTP are required' });
+    }
+
+    const otpRecord = await Otp.findOne({ phoneNumber, otp });
+
+    if (!otpRecord) {
+        return res.status(400).json({ message: 'Invalid or expired OTP' });
+    }
+
+    const user = await User.findOne({ phoneNumber });
+
+    if (user) {
+        // User exists, login them
+        res.json({
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            token: generateToken(user._id, user.role, user.name, user.email, user.profileImage),
+        });
+        // Clean up used OTP
+        await Otp.deleteOne({ _id: otpRecord._id });
+    } else {
+        // User does not exist. 
+        // We verify the OTP, but we need them to register.
+        // Option 1: Return 404, prompting client to go to Register flow.
+        // Option 2: Provide a token that proves phone is verified, to be used in registration.
+        // For now, simple 404.
+        return res.status(404).json({ message: 'User not found. Please register.' });
+    }
+};
+
+module.exports = { loginUser, registerUser, googleLogin, forgotPassword, resetPassword, sendOtp, loginWithOtp };

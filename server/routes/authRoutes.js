@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { loginUser, registerUser, googleLogin, forgotPassword, resetPassword } = require('../controllers/authController');
+const { loginUser, registerUser, googleLogin, forgotPassword, resetPassword, sendOtp, loginWithOtp } = require('../controllers/authController');
 
 const multer = require('multer');
 const path = require('path');
@@ -32,6 +32,8 @@ const upload = multer({
 router.post('/register', upload.single('profileImage'), registerUser);
 router.post('/login', loginUser);
 router.post('/google', googleLogin);
+router.post('/send-otp', sendOtp);
+router.post('/login-otp', loginWithOtp);
 router.post('/forgot-password', forgotPassword);
 router.put('/reset-password/:resetToken', resetPassword);
 
